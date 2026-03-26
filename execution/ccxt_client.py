@@ -68,4 +68,4 @@ def fetch_balance(exchange: ccxt.Exchange) -> float:
         Free USDT balance as a float.
     """
     balance_data: dict[str, Any] = exchange.fetch_balance()
-    return float(balance_data["free"].get("USDT", 0.0))
+    return float(balance_data.get("free", {}).get("USDT", 0.0))

@@ -48,3 +48,11 @@ def test_fetch_balance_returns_usdt_float() -> None:
     balance = fetch_balance(mock_exchange)
     assert isinstance(balance, float)
     assert balance == 1000.0
+
+
+def test_fetch_balance_returns_zero_when_usdt_missing() -> None:
+    """fetch_balance() must return 0.0 when USDT is absent from the balance."""
+    mock_exchange = MagicMock()
+    mock_exchange.fetch_balance.return_value = {"free": {}}
+    balance = fetch_balance(mock_exchange)
+    assert balance == 0.0
