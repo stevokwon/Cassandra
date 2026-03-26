@@ -209,3 +209,4 @@ __marimo__/
 # agents
 node_modules/
 .claude/
+docs/superpowers/plans/*
