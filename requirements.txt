@@ -1,5 +1,6 @@
 ccxt==4.3.95
 vectorbt==0.26.2
+plotly>=5.0,<6          # vectorbt 0.26.2 requires plotly<6 (heatmapgl removed in 6.x)
 pandas==2.2.2
 numpy==1.26.4
 python-dotenv==1.0.1
