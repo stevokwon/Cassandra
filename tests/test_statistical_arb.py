@@ -87,3 +87,47 @@ def test_bollinger_bands_first_period_minus_one_rows_are_nan() -> None:
     period = 20
     bb = compute_bollinger_bands(close, period=period)
     assert bb.iloc[: period - 1].isna().all().all()
+
+
+from strategy.statistical_arb import compute_volume_zscore
+
+
+# ── Volume Z-Score ────────────────────────────────────────────────────────────
+
+def _make_volume(values: list[float]) -> pd.Series:
+    """Wrap a list of floats into a DatetimeIndex volume Series."""
+    index = pd.date_range("2024-01-01", periods=len(values), freq="1h")
+    return pd.Series(values, index=index, name="volume")
+
+
+def test_volume_zscore_returns_series_same_length() -> None:
+    """compute_volume_zscore() must return a Series of the same length as the input."""
+    volume = _make_volume([float(i + 1) for i in range(50)])
+    z = compute_volume_zscore(volume, period=20)
+    assert isinstance(z, pd.Series)
+    assert len(z) == len(volume)
+
+
+def test_volume_zscore_first_period_minus_one_values_are_nan() -> None:
+    """The first (period - 1) values must be NaN."""
+    volume = _make_volume([float(i + 1) for i in range(50)])
+    period = 20
+    z = compute_volume_zscore(volume, period=period)
+    assert z.iloc[: period - 1].isna().all()
+
+
+def test_volume_zscore_constant_volume_is_nan_or_zero() -> None:
+    """A flat volume series has zero std — z-score should be NaN or 0."""
+    volume = _make_volume([100.0] * 40)
+    z = compute_volume_zscore(volume, period=20)
+    valid = z.dropna()
+    assert valid.empty or (valid == 0.0).all()
+
+
+def test_volume_zscore_spike_gives_high_positive_value() -> None:
+    """A large volume spike must produce a Z-score well above 2.0."""
+    base = [100.0] * 25
+    spike = base + [10_000.0]  # one massive outlier at position 25
+    volume = _make_volume(spike)
+    z = compute_volume_zscore(volume, period=20)
+    assert z.iloc[-1] > 2.0

@@ -64,3 +64,29 @@ def compute_bollinger_bands(
     upper: pd.Series = middle + std_dev * rolling_std
     lower: pd.Series = middle - std_dev * rolling_std
     return pd.DataFrame({"upper": upper, "middle": middle, "lower": lower})
+
+
+# ── Volume Z-Score ────────────────────────────────────────────────────────────
+
+def compute_volume_zscore(volume: pd.Series, period: int = 20) -> pd.Series:
+    """Compute the rolling Z-score of trading volume.
+
+    A Z-score > 2.0 indicates a statistically significant volume spike
+    (more than 2 standard deviations above the rolling mean).
+
+    Args:
+        volume: Time-ordered volume Series with a DatetimeIndex.
+        period: Rolling window for mean and standard deviation. Default 20.
+
+    Returns:
+        pd.Series of Z-scores. First (period - 1) values are NaN.
+        Returns 0.0 where rolling std is zero (constant volume).
+    """
+    rolling_mean: pd.Series = volume.rolling(window=period).mean()
+    rolling_std: pd.Series = volume.rolling(window=period).std(ddof=1)
+
+    safe_std: pd.Series = rolling_std.replace(0.0, np.nan)  # NaN where std is zero
+    z: pd.Series = (volume - rolling_mean) / safe_std
+    z = z.fillna(0.0)           # constant-volume windows → z = 0
+    z = z.where(rolling_mean.notna())  # warmup rows stay NaN
+    return z.rename("volume_zscore")
