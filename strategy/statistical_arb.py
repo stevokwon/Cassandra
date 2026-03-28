@@ -39,3 +39,28 @@ def compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     rsi = rsi.where(avg_loss != 0.0, other=50.0)
 
     return rsi.rename("rsi")
+
+
+# ── Bollinger Bands ───────────────────────────────────────────────────────────
+
+def compute_bollinger_bands(
+    close: pd.Series,
+    period: int = 20,
+    std_dev: float = 2.0,
+) -> pd.DataFrame:
+    """Compute Bollinger Bands (upper, middle, lower) for a close price Series.
+
+    Args:
+        close: Time-ordered close price Series with a DatetimeIndex.
+        period: Rolling window for the moving average and standard deviation.
+        std_dev: Number of standard deviations for the band width. Default 2.0.
+
+    Returns:
+        DataFrame with columns ['upper', 'middle', 'lower'].
+        First (period - 1) rows are NaN.
+    """
+    middle: pd.Series = close.rolling(window=period).mean()
+    rolling_std: pd.Series = close.rolling(window=period).std(ddof=1)
+    upper: pd.Series = middle + std_dev * rolling_std
+    lower: pd.Series = middle - std_dev * rolling_std
+    return pd.DataFrame({"upper": upper, "middle": middle, "lower": lower})
