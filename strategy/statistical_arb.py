@@ -90,3 +90,110 @@ def compute_volume_zscore(volume: pd.Series, period: int = 20) -> pd.Series:
     z = z.fillna(0.0)           # constant-volume windows → z = 0
     z = z.where(rolling_mean.notna())  # warmup rows stay NaN
     return z.rename("volume_zscore")
+
+
+# ── Signal Aggregation ────────────────────────────────────────────────────────
+
+def _rsi_signal(rsi_value: float) -> Signal:
+    """Map a single RSI value to a Signal literal."""
+    if rsi_value < 30.0:
+        return "bullish"
+    if rsi_value > 70.0:
+        return "bearish"
+    return "neutral"
+
+
+def _bb_signal(close_value: float, upper: float, lower: float) -> Signal:
+    """Map a close price relative to Bollinger Bands to a Signal literal."""
+    if close_value < lower:
+        return "bullish"
+    if close_value > upper:
+        return "bearish"
+    return "neutral"
+
+
+def _volume_signal(z_value: float, close_now: float, close_prev: float) -> Signal:
+    """Map a volume Z-score and price direction to a Signal literal."""
+    if z_value > 2.0:
+        if close_now > close_prev:
+            return "bullish"
+        if close_now < close_prev:
+            return "bearish"
+    return "neutral"
+
+
+def generate_signal(close: pd.Series, volume: pd.Series) -> Signal:
+    """Generate a consensus Signal from the last available candle.
+
+    Applies majority vote across RSI, Bollinger Bands, and Volume Z-Score.
+    Requires at least 20 candles of history (the longest lookback window).
+
+    Args:
+        close: Time-ordered close price Series (DatetimeIndex).
+        volume: Time-ordered volume Series (DatetimeIndex, same length as close).
+
+    Returns:
+        'bullish', 'bearish', or 'neutral'.
+    """
+    rsi = compute_rsi(close)
+    bb = compute_bollinger_bands(close)
+    z = compute_volume_zscore(volume)
+
+    # Use the last fully-computed value for each indicator
+    rsi_clean = rsi.dropna()
+    bb_clean = bb.dropna()
+    z_clean = z.dropna()
+
+    # Not enough history yet — return neutral
+    if bb_clean.empty:
+        return "neutral"
+
+    last_rsi = rsi_clean.iloc[-1] if not rsi_clean.empty else 50.0
+    last_bb = bb_clean.iloc[-1]
+    last_z = z_clean.iloc[-1] if not z_clean.empty else 0.0
+    last_close = close.iloc[-1]
+    prev_close = close.iloc[-2] if len(close) >= 2 else last_close
+
+    votes: list[Signal] = [
+        _rsi_signal(last_rsi),
+        _bb_signal(last_close, last_bb["upper"], last_bb["lower"]),
+        _volume_signal(last_z, last_close, prev_close),
+    ]
+
+    bullish_count = votes.count("bullish")
+    bearish_count = votes.count("bearish")
+
+    if bullish_count >= 2:
+        return "bullish"
+    if bearish_count >= 2:
+        return "bearish"
+    return "neutral"
+
+
+def rolling_signals(
+    close: pd.Series,
+    volume: pd.Series,
+    warmup: int = 20,
+) -> pd.Series:
+    """Apply generate_signal() across a rolling window of the full Series.
+
+    The first (warmup - 1) positions are set to 'neutral' (insufficient history).
+
+    Args:
+        close: Time-ordered close price Series.
+        volume: Time-ordered volume Series (same length as close).
+        warmup: Minimum candles needed before a real signal is generated. Default 20.
+
+    Returns:
+        pd.Series of Signal literals ('bullish'/'bearish'/'neutral'),
+        same length and index as close.
+    """
+    signals: list[Signal] = []
+    for i in range(len(close)):
+        if i < warmup - 1:
+            signals.append("neutral")
+        else:
+            signals.append(
+                generate_signal(close.iloc[: i + 1], volume.iloc[: i + 1])
+            )
+    return pd.Series(signals, index=close.index, name="signal")

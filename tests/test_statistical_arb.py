@@ -131,3 +131,62 @@ def test_volume_zscore_spike_gives_high_positive_value() -> None:
     volume = _make_volume(spike)
     z = compute_volume_zscore(volume, period=20)
     assert z.iloc[-1] > 2.0
+
+
+from strategy.statistical_arb import generate_signal, rolling_signals
+
+
+# ── Signal Aggregation ────────────────────────────────────────────────────────
+
+def _make_series(values: list[float], name: str = "close") -> pd.Series:
+    index = pd.date_range("2024-01-01", periods=len(values), freq="1h")
+    return pd.Series(values, index=index, name=name)
+
+
+def test_generate_signal_returns_valid_literal() -> None:
+    """generate_signal() must return one of 'bullish', 'bearish', 'neutral'."""
+    rng = np.random.default_rng(7)
+    close = _make_series((30_000 + np.cumsum(rng.normal(0, 100, 60))).tolist())
+    volume = _make_series(rng.uniform(50, 200, 60).tolist(), name="volume")
+    sig = generate_signal(close, volume)
+    assert sig in ("bullish", "bearish", "neutral")
+
+
+def test_generate_signal_neutral_on_flat_data() -> None:
+    """Flat price and volume should produce a neutral signal (no directional edge)."""
+    close = _make_series([100.0] * 60)
+    volume = _make_series([100.0] * 60, name="volume")
+    sig = generate_signal(close, volume)
+    assert sig == "neutral"
+
+
+def test_generate_signal_bullish_on_oversold_conditions() -> None:
+    """Simulate oversold conditions: a sudden crash should push RSI < 30 and price < lower BB."""
+    # Stable period followed by a sudden sharp drop on the last candle.
+    # The rolling std is small (stable history), so a large drop breaks below the lower BB.
+    # RSI also drops into oversold territory (< 30) → majority bullish.
+    close_values = [100.0] * 58 + [100.0, 60.0]  # sudden 40% crash on last candle
+    close = _make_series(close_values)
+    volume = _make_series([100.0] * 60, name="volume")
+    sig = generate_signal(close, volume)
+    # RSI < 30 (bullish) + price < lower BB (bullish) → majority bullish
+    assert sig == "bullish"
+
+
+def test_rolling_signals_returns_series_of_correct_length() -> None:
+    """rolling_signals() must return a Series with the same length as the input."""
+    rng = np.random.default_rng(8)
+    close = _make_series((30_000 + np.cumsum(rng.normal(0, 100, 80))).tolist())
+    volume = _make_series(rng.uniform(50, 200, 80).tolist(), name="volume")
+    sigs = rolling_signals(close, volume)
+    assert isinstance(sigs, pd.Series)
+    assert len(sigs) == len(close)
+
+
+def test_rolling_signals_values_are_valid_literals() -> None:
+    """Every value in rolling_signals() must be a valid Signal literal."""
+    rng = np.random.default_rng(9)
+    close = _make_series((30_000 + np.cumsum(rng.normal(0, 100, 80))).tolist())
+    volume = _make_series(rng.uniform(50, 200, 80).tolist(), name="volume")
+    sigs = rolling_signals(close, volume)
+    assert set(sigs.unique()).issubset({"bullish", "bearish", "neutral"})
