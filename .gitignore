@@ -207,7 +207,15 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# agents
+# Cassandra — project-specific
 node_modules/
+package.json
+package-lock.json
 .claude/
+
+# Agent memory & runtime logs (contain live trading data, not for public repos)
+agents/memory/*
+agents/__pycache__/*
+
+# Implementation plans (internal tooling, not needed by contributors)
 docs/superpowers/plans/*
