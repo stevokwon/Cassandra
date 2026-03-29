@@ -219,3 +219,9 @@ agents/__pycache__/*
 
 # Implementation plans (internal tooling, not needed by contributors)
 docs/superpowers/plans/*
+
+# Confidential files
+.env
+.env.example
+package-lock.json
+package.json
