@@ -52,3 +52,37 @@ def test_run_buy_and_hold_initial_cash_reflected() -> None:
     stats = run_buy_and_hold(close_series, initial_cash=1_000.0)
     # Total return is a ratio — just verify it is a finite float
     assert np.isfinite(stats["total_return"])
+
+
+from strategy.statistical_arb import rolling_signals
+from backtest.vectorbt_engine import run_strategy_backtest
+
+
+def test_run_strategy_backtest_returns_stats_dict() -> None:
+    """run_strategy_backtest() must return a dict with 'total_return' and 'sharpe_ratio'."""
+    df = _make_ohlcv(200)
+    close_series = load_ohlcv_from_df(df)
+    volume_series = pd.Series(
+        df["volume"].to_numpy(),
+        index=close_series.index,
+        name="volume",
+    )
+    sigs = rolling_signals(close_series, volume_series)
+    stats = run_strategy_backtest(close_series, sigs, initial_cash=1_000.0)
+    assert isinstance(stats, dict)
+    assert "total_return" in stats
+    assert "sharpe_ratio" in stats
+
+
+def test_run_strategy_backtest_total_return_is_finite() -> None:
+    """run_strategy_backtest() total_return must be a finite float."""
+    df = _make_ohlcv(200)
+    close_series = load_ohlcv_from_df(df)
+    volume_series = pd.Series(
+        df["volume"].to_numpy(),
+        index=close_series.index,
+        name="volume",
+    )
+    sigs = rolling_signals(close_series, volume_series)
+    stats = run_strategy_backtest(close_series, sigs, initial_cash=1_000.0)
+    assert np.isfinite(stats["total_return"])
