@@ -28,7 +28,7 @@ import pandas as pd
 from backtest.calibration import MIN_PROFIT_FACTOR, MIN_SHARPE, build_report
 from backtest.run_backtest import run_full_backtest
 from backtest.vectorbt_engine import load_ohlcv_from_df
-from execution.ccxt_client import build_exchange, fetch_ohlcv
+from execution.ccxt_client import fetch_ohlcv_bulk
 
 
 def main() -> None:
@@ -44,11 +44,10 @@ def main() -> None:
     print(f"  Candles: {args.limit}  |  Capital: ${args.capital:,.0f} USDT")
     print(f"{'═' * 50}\n")
 
-    # ── 1. Fetch OHLCV ───────────────────────────────────────────────────────
-    print("Fetching OHLCV data from Binance testnet...")
+    # ── 1. Fetch OHLCV (public Binance production endpoint — no API key needed) ─
+    print("Fetching OHLCV data from Binance (public historical)...")
     try:
-        exchange = build_exchange()
-        df = fetch_ohlcv(exchange, symbol=args.symbol, timeframe=args.timeframe, limit=args.limit)
+        df = fetch_ohlcv_bulk(symbol=args.symbol, timeframe=args.timeframe, total_candles=args.limit)
     except Exception as exc:
         print(f"  ERROR: Could not fetch data — {exc}")
         sys.exit(1)
