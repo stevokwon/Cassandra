@@ -68,6 +68,26 @@ if [ ! -f "$ENV_FILE" ] && [ -f "$ENV_EXAMPLE" ]; then
     echo "[setup] Created .env from .env.example — fill in your Binance testnet credentials."
 fi
 
+# ── 8. Install the cd() auto-activation hook into the user's shell profile ───
+CD_HOOK='
+# Cassandra — auto-activate .venv on cd
+function cd() { builtin cd "$@" && [ -f .venv/bin/activate ] && source .venv/bin/activate; }'
+
+# Detect which shell profile to update
+if [ -n "$ZSH_VERSION" ] || [ "$(basename "$SHELL")" = "zsh" ]; then
+    SHELL_RC="$HOME/.zshrc"
+else
+    SHELL_RC="$HOME/.bashrc"
+fi
+
+if ! grep -q "Cassandra — auto-activate .venv on cd" "$SHELL_RC" 2>/dev/null; then
+    echo "$CD_HOOK" >> "$SHELL_RC"
+    echo "[setup] Auto-activation hook added to $SHELL_RC."
+    echo "[setup] Run: source $SHELL_RC  (or open a new terminal)"
+else
+    echo "[setup] Auto-activation hook already present in $SHELL_RC — skipping."
+fi
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Cassandra environment ready."
@@ -77,12 +97,9 @@ echo ""
 echo "  Next steps:"
 echo "  1. Fill in .env with Binance testnet keys"
 echo "     (https://testnet.binance.vision)"
+echo "  2. source $SHELL_RC  (activates the cd hook)"
+echo "     Then: cd into this directory to auto-activate."
 echo ""
-echo "  To auto-activate on every 'cd' into this"
-echo "  directory, add this to your ~/.zshrc:"
-echo ""
-echo '    function cd() {'
-echo '      builtin cd "$@"'
-echo '      [ -f .venv/bin/activate ] && source .venv/bin/activate'
-echo '    }'
+echo "  Cursor / VS Code users: venv is auto-selected"
+echo "  via .vscode/settings.json — no extra steps."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
