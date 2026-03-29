@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
+import streamlit.components.v1 as components
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -17,7 +17,12 @@ from backtest.calibration import MAX_BRIER, MIN_PROFIT_FACTOR, MIN_SHARPE
 from dashboard.utils import latest_backtest_stats, load_pending_upgrades, parse_backtest_log
 
 st.set_page_config(page_title="Strategy Evaluation — Cassandra", layout="wide")
-st_autorefresh(interval=60_000, key="eval_refresh")
+
+# Auto-refresh every 60 seconds via JS — no external package required
+components.html(
+    '<script>setTimeout(function(){window.location.reload();}, 60000);</script>',
+    height=0,
+)
 
 st.title("Strategy Evaluation")
 

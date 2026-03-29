@@ -6,18 +6,15 @@ Tabs:
     Balance      — testnet USDT balance
 """
 import asyncio
+import concurrent.futures
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import nest_asyncio
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 from plotly.subplots import make_subplots
-from streamlit_autorefresh import st_autorefresh
-
-# Patch the running asyncio loop so asyncio.run() works inside Streamlit
-nest_asyncio.apply()
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -33,7 +30,12 @@ from strategy.statistical_arb import (
 )
 
 st.set_page_config(page_title="Live Monitor — Cassandra", layout="wide")
-st_autorefresh(interval=60_000, key="live_refresh")
+
+# Auto-refresh every 60 seconds via JS — no external package required
+components.html(
+    '<script>setTimeout(function(){window.location.reload();}, 60000);</script>',
+    height=0,
+)
 
 st.title("Live Monitor")
 st.caption(
@@ -64,37 +66,60 @@ with tab_chart:
             cols=1,
             shared_xaxes=True,
             row_heights=[0.7, 0.3],
-            vertical_spacing=0.05,
+            vertical_spacing=0.04,
             subplot_titles=("BTC/USDT 1h", "RSI (14)"),
         )
 
+        # Price + Bollinger Bands
         fig.add_trace(
-            go.Scatter(x=close.index, y=close, name="Close", line=dict(color="#1f77b4")),
+            go.Scatter(
+                x=close.index, y=close, name="Close",
+                line=dict(color="#F0F0F0", width=1.5),
+            ),
             row=1, col=1,
         )
         fig.add_trace(
             go.Scatter(
                 x=bb.index, y=bb["upper"], name="BB Upper",
-                line=dict(color="#aec7e8", dash="dash"),
+                line=dict(color="#FF6600", dash="dash", width=1),
             ),
             row=1, col=1,
         )
         fig.add_trace(
             go.Scatter(
                 x=bb.index, y=bb["lower"], name="BB Lower",
-                line=dict(color="#aec7e8", dash="dash"),
-                fill="tonexty", fillcolor="rgba(174,199,232,0.1)",
+                line=dict(color="#FF6600", dash="dash", width=1),
+                fill="tonexty", fillcolor="rgba(255,102,0,0.05)",
             ),
             row=1, col=1,
         )
+
+        # RSI
         fig.add_trace(
-            go.Scatter(x=rsi.index, y=rsi, name="RSI", line=dict(color="#ff7f0e")),
+            go.Scatter(
+                x=rsi.index, y=rsi, name="RSI",
+                line=dict(color="#FF6600", width=1.5),
+            ),
             row=2, col=1,
         )
-        fig.add_hline(y=70, line_dash="dot", line_color="red", row=2, col=1)
-        fig.add_hline(y=30, line_dash="dot", line_color="green", row=2, col=1)
+        fig.add_hline(y=70, line_dash="dot", line_color="#CC2200", line_width=1, row=2, col=1)
+        fig.add_hline(y=30, line_dash="dot", line_color="#00AA44", line_width=1, row=2, col=1)
 
-        fig.update_layout(height=600, showlegend=True, margin=dict(t=40, b=20))
+        fig.update_layout(
+            height=620,
+            showlegend=True,
+            margin=dict(t=40, b=20, l=10, r=10),
+            paper_bgcolor="#0D0D0D",
+            plot_bgcolor="#111111",
+            font=dict(color="#D4D4D4", family="Courier New, monospace", size=12),
+            legend=dict(
+                bgcolor="#1A1A1A", bordercolor="#333333", borderwidth=1,
+                font=dict(size=11),
+            ),
+        )
+        fig.update_xaxes(gridcolor="#222222", showgrid=True, zeroline=False, linecolor="#333333")
+        fig.update_yaxes(gridcolor="#222222", showgrid=True, zeroline=False, linecolor="#333333")
+
         st.plotly_chart(fig, use_container_width=True)
 
 # ── Tab 2: Signals ────────────────────────────────────────────────────────────
@@ -105,9 +130,14 @@ with tab_signals:
         # Statistical swarm — single candle, no O(n^2) rolling
         stat_signal = generate_signal(close, volume)
 
-        # Macro swarm — async Playwright scraper + Claude Haiku
+        # Macro swarm — run async Playwright scraper in a new thread so it
+        # gets its own event loop (Streamlit already runs one internally)
+        def _fetch_headlines() -> list[str]:
+            return asyncio.run(scrape_crypto_headlines())
+
         try:
-            headlines = asyncio.run(scrape_crypto_headlines())
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                headlines = pool.submit(_fetch_headlines).result(timeout=30)
             macro: MacroSignal = classify_sentiment(headlines)
         except Exception as exc:
             st.warning(f"Macro sentiment unavailable: {exc}")
