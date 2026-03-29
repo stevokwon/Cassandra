@@ -19,6 +19,39 @@ from execution.ccxt_client import fetch_ohlcv_bulk
 
 st.set_page_config(page_title="Backtest Runner — Cassandra", layout="wide")
 
+
+# ── Log helper (mirrors scripts/run_backtest.py) ──────────────────────────────
+def _append_log(
+    symbol: str,
+    timeframe: str,
+    candles: int,
+    capital: float,
+    report: object,
+    verdict: str,
+    date_from: str,
+    date_to: str,
+) -> None:
+    log_path = Path(__file__).parent.parent.parent / "agents" / "memory" / "backtest_log.md"
+
+    if not log_path.exists():
+        log_path.write_text(
+            "# Backtest Log\n\n"
+            "| Date (UTC) | Symbol | TF | Candles | Period | Return | Sharpe | PF | DD | Trades | Verdict |\n"
+            "|---|---|---|---|---|---|---|---|---|---|---|\n"
+        )
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    pf = report.profit_factor  # type: ignore[attr-defined]
+    pf_str = "∞" if pf == float("inf") else f"{pf:.2f}"
+    line = (
+        f"| {now} | {symbol} | {timeframe} | {candles} | {date_from}→{date_to} "
+        f"| {report.total_return:+.2%} | {report.sharpe_ratio:.3f} "  # type: ignore[attr-defined]
+        f"| {pf_str} | {report.max_drawdown:.2%} | {report.total_trades} | {verdict} |\n"  # type: ignore[attr-defined]
+    )
+    with log_path.open("a") as f:
+        f.write(line)
+
+
 st.title("Backtest Runner")
 st.caption("Configure parameters and run a backtest. Results are logged automatically.")
 
@@ -139,35 +172,3 @@ if "backtest_result" in st.session_state:
         f"Candles fetched: {r['candles']:,}  |  "
         f"Result logged to agents/memory/backtest_log.md"
     )
-
-
-# ── Log helper (mirrors scripts/run_backtest.py) ──────────────────────────────
-def _append_log(
-    symbol: str,
-    timeframe: str,
-    candles: int,
-    capital: float,
-    report: object,
-    verdict: str,
-    date_from: str,
-    date_to: str,
-) -> None:
-    log_path = Path(__file__).parent.parent.parent / "agents" / "memory" / "backtest_log.md"
-
-    if not log_path.exists():
-        log_path.write_text(
-            "# Backtest Log\n\n"
-            "| Date (UTC) | Symbol | TF | Candles | Period | Return | Sharpe | PF | DD | Trades | Verdict |\n"
-            "|---|---|---|---|---|---|---|---|---|---|---|\n"
-        )
-
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-    pf = report.profit_factor  # type: ignore[attr-defined]
-    pf_str = "∞" if pf == float("inf") else f"{pf:.2f}"
-    line = (
-        f"| {now} | {symbol} | {timeframe} | {candles} | {date_from}→{date_to} "
-        f"| {report.total_return:+.2%} | {report.sharpe_ratio:.3f} "  # type: ignore[attr-defined]
-        f"| {pf_str} | {report.max_drawdown:.2%} | {report.total_trades} | {verdict} |\n"  # type: ignore[attr-defined]
-    )
-    with log_path.open("a") as f:
-        f.write(line)
