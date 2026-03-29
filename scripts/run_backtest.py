@@ -13,6 +13,7 @@ Options:
 """
 import argparse
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Allow running from repo root without installing the package
@@ -84,11 +85,58 @@ def main() -> None:
     print(f"  Profit Factor:   {report.profit_factor:>6.3f}   "
           f"{_threshold(report.profit_factor, MIN_PROFIT_FACTOR)}  (need >= {MIN_PROFIT_FACTOR})")
     print()
+    verdict = "LIVE READY" if report.is_live_ready else "NOT LIVE READY"
     if report.is_live_ready:
         print("  ✅  LIVE READY — thresholds met")
     else:
         print("  ⛔  NOT LIVE READY — keep backtesting")
     print(f"{'─' * 50}\n")
+
+    # ── 5. Append run to backtest log ────────────────────────────────────────
+    _append_log(
+        symbol=args.symbol,
+        timeframe=args.timeframe,
+        candles=len(close),
+        capital=args.capital,
+        report=report,
+        verdict=verdict,
+        date_from=close.index[0].strftime("%Y-%m-%d"),
+        date_to=close.index[-1].strftime("%Y-%m-%d"),
+    )
+
+
+def _append_log(
+    symbol: str,
+    timeframe: str,
+    candles: int,
+    capital: float,
+    report: object,
+    verdict: str,
+    date_from: str,
+    date_to: str,
+) -> None:
+    """Append a one-line entry to agents/memory/backtest_log.md."""
+    log_path = Path(__file__).parent.parent / "agents" / "memory" / "backtest_log.md"
+
+    # Create file with header if it doesn't exist
+    if not log_path.exists():
+        log_path.write_text(
+            "# Backtest Log\n\n"
+            "| Date (UTC) | Symbol | TF | Candles | Period | Return | Sharpe | PF | DD | Trades | Verdict |\n"
+            "|---|---|---|---|---|---|---|---|---|---|---|\n"
+        )
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    pf = report.profit_factor  # type: ignore[attr-defined]
+    pf_str = "∞" if pf == float("inf") else f"{pf:.2f}"
+    line = (
+        f"| {now} | {symbol} | {timeframe} | {candles} | {date_from}→{date_to} "
+        f"| {report.total_return:+.2%} | {report.sharpe_ratio:.3f} "  # type: ignore[attr-defined]
+        f"| {pf_str} | {report.max_drawdown:.2%} | {report.total_trades} | {verdict} |\n"  # type: ignore[attr-defined]
+    )
+    with log_path.open("a") as f:
+        f.write(line)
+    print(f"  Run logged → agents/memory/backtest_log.md\n")
 
 
 if __name__ == "__main__":
