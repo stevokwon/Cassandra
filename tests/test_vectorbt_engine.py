@@ -72,6 +72,8 @@ def test_run_strategy_backtest_returns_stats_dict() -> None:
     assert isinstance(stats, dict)
     assert "total_return" in stats
     assert "sharpe_ratio" in stats
+    assert "max_drawdown" in stats
+    assert "total_trades" in stats
 
 
 def test_run_strategy_backtest_total_return_is_finite() -> None:
