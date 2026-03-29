@@ -71,3 +71,54 @@ def run_buy_and_hold(
         "max_drawdown": float(raw_stats.get("Max Drawdown [%]", np.nan)) / 100,
         "total_trades": int(raw_stats.get("Total Trades", 0)),
     }
+
+
+def run_strategy_backtest(
+    close: pd.Series,
+    signals: pd.Series,
+    initial_cash: float = 1_000.0,
+    fees: float = 0.001,
+) -> dict[str, Any]:
+    """Run a VectorBT backtest driven by a pre-computed signal Series.
+
+    Enters long on 'bullish' signals, exits on 'bearish' or end-of-series.
+    Ignores 'neutral' signals (holds current position).
+
+    Args:
+        close: DatetimeIndex Series of close prices.
+        signals: Series of Signal literals ('bullish'/'bearish'/'neutral'),
+                 same index as close (from rolling_signals()).
+        initial_cash: Starting capital in USDT.
+        fees: Round-trip fee fraction. Default 0.1%.
+
+    Returns:
+        Dictionary with 'total_return', 'sharpe_ratio', 'max_drawdown', 'total_trades'.
+    """
+    entries: pd.Series = signals == "bullish"
+    exits: pd.Series = signals == "bearish"
+
+    # Ensure at least one entry exists to avoid VectorBT errors on empty portfolios
+    if not entries.any():
+        return {
+            "total_return": 0.0,
+            "sharpe_ratio": float("nan"),
+            "max_drawdown": 0.0,
+            "total_trades": 0,
+        }
+
+    portfolio = vbt.Portfolio.from_signals(
+        close,
+        entries=entries,
+        exits=exits,
+        init_cash=initial_cash,
+        fees=fees,
+        freq="1h",
+    )
+
+    raw_stats = portfolio.stats()
+    return {
+        "total_return": float(raw_stats.get("Total Return [%]", np.nan)) / 100,
+        "sharpe_ratio": float(raw_stats.get("Sharpe Ratio", np.nan)),
+        "max_drawdown": float(raw_stats.get("Max Drawdown [%]", np.nan)) / 100,
+        "total_trades": int(raw_stats.get("Total Trades", 0)),
+    }
