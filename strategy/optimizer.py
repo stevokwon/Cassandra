@@ -16,6 +16,7 @@ from strategy.statistical_arb import (
     _volume_signal,
     compute_bollinger_bands,
     compute_rsi,
+    compute_sma,
     compute_volume_zscore,
 )
 
@@ -31,31 +32,35 @@ class StrategyVariant:
         bb_period: Bollinger Band rolling window.
         bb_std: Number of standard deviations for band width.
         volume_period: Volume Z-score rolling window.
+        sma_period: SMA trend-filter period. 0 disables the filter.
     """
 
     rsi_period: int = 14
     bb_period: int = 20
     bb_std: float = 2.0
     volume_period: int = 20
+    sma_period: int = 200
 
     def describe(self) -> str:
         """Human-readable one-line description for PENDING_UPGRADES.md."""
+        sma_part = f" + SMA({self.sma_period})" if self.sma_period > 0 else ""
         return (
             f"RSI({self.rsi_period}) + BB({self.bb_period}, σ={self.bb_std}) "
-            f"+ VolZ({self.volume_period})"
+            f"+ VolZ({self.volume_period}){sma_part}"
         )
 
 
 # Catalogue of parameter combinations to test in the shadow pipeline.
 CANDIDATE_VARIANTS: list[StrategyVariant] = [
-    StrategyVariant(rsi_period=7,  bb_period=15, bb_std=1.5, volume_period=15),
-    StrategyVariant(rsi_period=10, bb_period=20, bb_std=2.0, volume_period=15),
-    StrategyVariant(rsi_period=14, bb_period=20, bb_std=2.0, volume_period=20),  # default
-    StrategyVariant(rsi_period=14, bb_period=15, bb_std=1.5, volume_period=20),
-    StrategyVariant(rsi_period=21, bb_period=20, bb_std=2.0, volume_period=20),
-    StrategyVariant(rsi_period=21, bb_period=25, bb_std=2.5, volume_period=25),
-    StrategyVariant(rsi_period=10, bb_period=25, bb_std=2.5, volume_period=20),
-    StrategyVariant(rsi_period=14, bb_period=25, bb_std=2.0, volume_period=25),
+    StrategyVariant(rsi_period=7,  bb_period=15, bb_std=1.5, volume_period=15, sma_period=200),
+    StrategyVariant(rsi_period=10, bb_period=20, bb_std=2.0, volume_period=15, sma_period=200),
+    StrategyVariant(rsi_period=14, bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),  # default
+    StrategyVariant(rsi_period=14, bb_period=15, bb_std=1.5, volume_period=20, sma_period=200),
+    StrategyVariant(rsi_period=21, bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),
+    StrategyVariant(rsi_period=21, bb_period=25, bb_std=2.5, volume_period=25, sma_period=200),
+    StrategyVariant(rsi_period=10, bb_period=25, bb_std=2.5, volume_period=20, sma_period=100),
+    StrategyVariant(rsi_period=14, bb_period=25, bb_std=2.0, volume_period=25, sma_period=100),
+    StrategyVariant(rsi_period=14, bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),   # no trend filter
 ]
 
 
@@ -66,14 +71,18 @@ def generate_signals_with_params(
     warmup: int | None = None,
 ) -> pd.Series:
     """Generate rolling signals using a custom StrategyVariant configuration."""
-    _warmup = warmup if warmup is not None else variant.bb_period
+    effective_warmup = max(
+        warmup if warmup is not None else variant.bb_period,
+        variant.sma_period if variant.sma_period > 0 else 0,
+    )
     rsi = compute_rsi(close, period=variant.rsi_period)
     bb = compute_bollinger_bands(close, period=variant.bb_period, std_dev=variant.bb_std)
     z = compute_volume_zscore(volume, period=variant.volume_period)
+    sma = compute_sma(close, variant.sma_period) if variant.sma_period > 0 else None
 
     signals: list[Signal] = []
     for i in range(len(close)):
-        if i < _warmup - 1:
+        if i < effective_warmup - 1:
             signals.append("neutral")
             continue
 
@@ -98,11 +107,23 @@ def generate_signals_with_params(
         ]
 
         if votes.count("bullish") >= 2:
-            signals.append("bullish")
+            signal: Signal = "bullish"
         elif votes.count("bearish") >= 2:
-            signals.append("bearish")
+            signal = "bearish"
         else:
-            signals.append("neutral")
+            signal = "neutral"
+
+        # SMA trend gate: suppress signals that go against the macro trend.
+        if sma is not None and signal != "neutral":
+            sma_slice = sma.iloc[: i + 1].dropna()
+            if not sma_slice.empty:
+                last_sma = float(sma_slice.iloc[-1])
+                if signal == "bullish" and last_close < last_sma:
+                    signal = "neutral"
+                elif signal == "bearish" and last_close > last_sma:
+                    signal = "neutral"
+
+        signals.append(signal)
 
     return pd.Series(signals, index=close.index, name="signal")
 
