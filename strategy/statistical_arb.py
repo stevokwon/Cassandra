@@ -92,6 +92,24 @@ def compute_volume_zscore(volume: pd.Series, period: int = 20) -> pd.Series:
     return z.rename("volume_zscore")
 
 
+# ── Simple Moving Average (Trend Filter) ─────────────────────────────────────
+
+def compute_sma(close: pd.Series, period: int = 200) -> pd.Series:
+    """Compute a Simple Moving Average used as a macro trend-direction filter.
+
+    Only used as a regime gate — bullish signals are suppressed when price is
+    below the SMA, and bearish signals are suppressed when price is above it.
+
+    Args:
+        close: Time-ordered close price Series with a DatetimeIndex.
+        period: Lookback window. Default 200.
+
+    Returns:
+        pd.Series of SMA values. First (period-1) values are NaN.
+    """
+    return close.rolling(window=period).mean().rename("sma")
+
+
 # ── Signal Aggregation ────────────────────────────────────────────────────────
 
 def _rsi_signal(rsi_value: float) -> Signal:
@@ -122,15 +140,23 @@ def _volume_signal(z_value: float, close_now: float, close_prev: float) -> Signa
     return "neutral"
 
 
-def generate_signal(close: pd.Series, volume: pd.Series) -> Signal:
+def generate_signal(
+    close: pd.Series,
+    volume: pd.Series,
+    sma_period: int = 200,
+) -> Signal:
     """Generate a consensus Signal from the last available candle.
 
-    Applies majority vote across RSI, Bollinger Bands, and Volume Z-Score.
-    Requires at least 20 candles of history (the longest lookback window).
+    Applies majority vote across RSI, Bollinger Bands, and Volume Z-Score,
+    then gates the result through an SMA trend filter: bullish signals are
+    only emitted when price is above the SMA (uptrend) and bearish signals
+    only when price is below it (downtrend). This prevents mean-reversion
+    entries against the macro trend.
 
     Args:
         close: Time-ordered close price Series (DatetimeIndex).
         volume: Time-ordered volume Series (DatetimeIndex, same length as close).
+        sma_period: Period for the SMA trend filter. Set to 0 to disable.
 
     Returns:
         'bullish', 'bearish', or 'neutral'.
@@ -163,37 +189,56 @@ def generate_signal(close: pd.Series, volume: pd.Series) -> Signal:
     bullish_count = votes.count("bullish")
     bearish_count = votes.count("bearish")
 
+    signal: Signal = "neutral"
     if bullish_count >= 2:
-        return "bullish"
-    if bearish_count >= 2:
-        return "bearish"
-    return "neutral"
+        signal = "bullish"
+    elif bearish_count >= 2:
+        signal = "bearish"
+
+    # SMA trend gate: only trade in the direction of the macro trend.
+    # Suppresses bullish signals below SMA (downtrend) and bearish signals
+    # above SMA (uptrend) to avoid catching falling knives or shorting rallies.
+    if sma_period > 0 and signal != "neutral":
+        sma = compute_sma(close, sma_period)
+        sma_clean = sma.dropna()
+        if not sma_clean.empty:
+            last_sma = float(sma_clean.iloc[-1])
+            if signal == "bullish" and last_close < last_sma:
+                return "neutral"
+            if signal == "bearish" and last_close > last_sma:
+                return "neutral"
+
+    return signal
 
 
 def rolling_signals(
     close: pd.Series,
     volume: pd.Series,
     warmup: int = 20,
+    sma_period: int = 200,
 ) -> pd.Series:
     """Apply generate_signal() across a rolling window of the full Series.
 
-    The first (warmup - 1) positions are set to 'neutral' (insufficient history).
+    The first max(warmup, sma_period) - 1 positions are 'neutral' to ensure
+    both indicator warm-up and a valid SMA reading before any signal fires.
 
     Args:
         close: Time-ordered close price Series.
         volume: Time-ordered volume Series (same length as close).
-        warmup: Minimum candles needed before a real signal is generated. Default 20.
+        warmup: Minimum candles for indicator warm-up. Default 20.
+        sma_period: Passed to generate_signal() for the trend gate. Default 200.
 
     Returns:
         pd.Series of Signal literals ('bullish'/'bearish'/'neutral'),
         same length and index as close.
     """
+    effective_warmup = max(warmup, sma_period) if sma_period > 0 else warmup
     signals: list[Signal] = []
     for i in range(len(close)):
-        if i < warmup - 1:
+        if i < effective_warmup - 1:
             signals.append("neutral")
         else:
             signals.append(
-                generate_signal(close.iloc[: i + 1], volume.iloc[: i + 1])
+                generate_signal(close.iloc[: i + 1], volume.iloc[: i + 1], sma_period)
             )
     return pd.Series(signals, index=close.index, name="signal")
