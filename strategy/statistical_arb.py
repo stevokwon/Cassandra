@@ -12,7 +12,7 @@ Signal = Literal["bullish", "bearish", "neutral"]
 
 # ── RSI ───────────────────────────────────────────────────────────────────────
 
-def compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
+def compute_rsi(close: pd.Series, period: int = 21) -> pd.Series:
     """Compute the Relative Strength Index (RSI) for a close price Series.
 
     Uses Wilder's smoothed moving average (EMA with alpha=1/period).
