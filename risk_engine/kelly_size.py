@@ -22,7 +22,7 @@ def expected_value(p: float, b: float) -> float:
     return p * b - (1.0 - p)
 
 
-def kelly_fraction(p: float, b: float, fractional: float = 0.25) -> float:
+def kelly_fraction(p: float, b: float, fractional: float = 0.15) -> float:
     """Compute the Fractional Kelly fraction of capital to risk.
 
     Returns 0.0 if the full Kelly f* <= 0 (no edge or negative edge).
@@ -30,7 +30,7 @@ def kelly_fraction(p: float, b: float, fractional: float = 0.25) -> float:
     Args:
         p: Probability of a winning trade (0.0–1.0).
         b: Payout ratio.
-        fractional: Scaling factor. Default 0.25 (quarter Kelly).
+        fractional: Scaling factor. Default 0.15 (reduced from 0.25 for drawdown control).
 
     Returns:
         Fraction of capital to risk, in [0.0, 1.0].
@@ -46,7 +46,7 @@ def position_size_usdt(
     capital: float,
     p: float,
     b: float,
-    fractional: float = 0.25,
+    fractional: float = 0.15,
 ) -> float:
     """Compute the USDT position size using Fractional Kelly.
 
@@ -54,7 +54,7 @@ def position_size_usdt(
         capital: Available capital in USDT.
         p: Probability of winning.
         b: Payout ratio.
-        fractional: Kelly scaling factor. Default 0.25.
+        fractional: Kelly scaling factor. Default 0.15 (reduced from 0.25 for drawdown control).
 
     Returns:
         Position size in USDT. Zero if no edge.

@@ -21,7 +21,7 @@ def validate_trade(ev: float, min_ev: float = 0.0) -> bool:
 def check_drawdown(
     current_equity: float,
     peak_equity: float,
-    max_dd: float = 0.20,
+    max_dd: float = 0.10,
 ) -> bool:
     """Check whether current drawdown is within the maximum allowed limit.
 
@@ -30,7 +30,7 @@ def check_drawdown(
     Args:
         current_equity: Current portfolio value in USDT.
         peak_equity: Highest recorded portfolio value in USDT.
-        max_dd: Maximum drawdown fraction before circuit breaker trips. Default 0.20 (20%).
+        max_dd: Maximum drawdown fraction before circuit breaker trips. Default 0.10 (10%).
 
     Returns:
         True if drawdown is within limit (trading allowed).
