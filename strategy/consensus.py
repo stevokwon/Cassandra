@@ -79,7 +79,7 @@ def evaluate_consensus(
     b = payout_ratio
     ev = expected_value(p, b)
 
-    if not validate_trade(ev):
+    if not validate_trade(ev, min_ev=0.05):
         return TradeDecision(
             action="hold",
             position_size_usdt=0.0,
