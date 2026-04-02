@@ -68,7 +68,7 @@ def test_write_pending_upgrades_appends_entries(tmp_path: Path) -> None:
     ]
     write_pending_upgrades(results, path=log_file)
     content = log_file.read_text()
-    assert "RSI(21)" in content
+    assert "RSI(21," in content
     assert "2.5" in content  # sharpe ratio appears
 
 

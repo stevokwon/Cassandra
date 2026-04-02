@@ -29,6 +29,8 @@ class StrategyVariant:
 
     Attributes:
         rsi_period: RSI lookback window.
+        rsi_oversold: RSI level below which the signal is 'bullish'. Default 30.
+        rsi_overbought: RSI level above which the signal is 'bearish'. Default 70.
         bb_period: Bollinger Band rolling window.
         bb_std: Number of standard deviations for band width.
         volume_period: Volume Z-score rolling window.
@@ -36,6 +38,8 @@ class StrategyVariant:
     """
 
     rsi_period: int = 14
+    rsi_oversold: int = 30
+    rsi_overbought: int = 70
     bb_period: int = 20
     bb_std: float = 2.0
     volume_period: int = 20
@@ -43,32 +47,66 @@ class StrategyVariant:
 
     def describe(self) -> str:
         """Human-readable one-line description for PENDING_UPGRADES.md."""
-        sma_part = f" + SMA({self.sma_period})" if self.sma_period > 0 else ""
+        sma_part = f" + SMA({self.sma_period})" if self.sma_period > 0 else " (no SMA)"
         return (
-            f"RSI({self.rsi_period}) + BB({self.bb_period}, σ={self.bb_std}) "
+            f"RSI({self.rsi_period}, {self.rsi_oversold}/{self.rsi_overbought}) "
+            f"+ BB({self.bb_period}, σ={self.bb_std}) "
             f"+ VolZ({self.volume_period}){sma_part}"
         )
 
 
 # Catalogue of parameter combinations to test in the shadow pipeline.
+#
+# Dimensions explored:
+#   RSI period      : 14, 21, 28
+#   RSI thresholds  : 35/65 (more signals), 30/70 (standard), 25/75 (rare extremes)
+#   BB width        : 1.5σ (tight), 2.0σ (standard), 2.5σ (wide)
+#   SMA trend gate  : 0 (off), 100 (fast), 200 (standard)
 CANDIDATE_VARIANTS: list[StrategyVariant] = [
-    # ── No trend filter (raw mean-reversion) ──────────────────────────────────
-    StrategyVariant(rsi_period=14, bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
-    StrategyVariant(rsi_period=21, bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
-    StrategyVariant(rsi_period=28, bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
-    # ── SMA(200) trend gate — standard ────────────────────────────────────────
-    StrategyVariant(rsi_period=14, bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),
-    StrategyVariant(rsi_period=21, bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),
-    StrategyVariant(rsi_period=28, bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),
-    # ── SMA(100) trend gate — faster regime switch ────────────────────────────
-    StrategyVariant(rsi_period=14, bb_period=20, bb_std=2.0, volume_period=20, sma_period=100),
-    StrategyVariant(rsi_period=21, bb_period=20, bb_std=2.0, volume_period=20, sma_period=100),
-    # ── Wider Bollinger Bands (2.5σ) + slow indicators ────────────────────────
-    StrategyVariant(rsi_period=21, bb_period=25, bb_std=2.5, volume_period=25, sma_period=200),
-    StrategyVariant(rsi_period=28, bb_period=25, bb_std=2.5, volume_period=25, sma_period=200),
-    # ── Tighter Bollinger Bands (1.5σ) + fast indicators ─────────────────────
-    StrategyVariant(rsi_period=14, bb_period=15, bb_std=1.5, volume_period=15, sma_period=200),
-    StrategyVariant(rsi_period=21, bb_period=15, bb_std=1.5, volume_period=15, sma_period=200),
+    # ── Standard RSI 30/70 thresholds — no SMA ────────────────────────────────
+    StrategyVariant(rsi_period=21, rsi_oversold=30, rsi_overbought=70,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
+    StrategyVariant(rsi_period=14, rsi_oversold=30, rsi_overbought=70,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
+    StrategyVariant(rsi_period=28, rsi_oversold=30, rsi_overbought=70,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
+    # ── Relaxed RSI 35/65 — fires more often, better for trending markets ─────
+    StrategyVariant(rsi_period=21, rsi_oversold=35, rsi_overbought=65,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
+    StrategyVariant(rsi_period=14, rsi_oversold=35, rsi_overbought=65,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
+    StrategyVariant(rsi_period=21, rsi_oversold=35, rsi_overbought=65,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),
+    StrategyVariant(rsi_period=14, rsi_oversold=35, rsi_overbought=65,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),
+    # ── Strict RSI 25/75 — very rare entries, high-conviction only ───────────
+    StrategyVariant(rsi_period=21, rsi_oversold=25, rsi_overbought=75,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
+    StrategyVariant(rsi_period=14, rsi_oversold=25, rsi_overbought=75,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
+    # ── Standard RSI 30/70 + SMA(200) trend gate ──────────────────────────────
+    StrategyVariant(rsi_period=21, rsi_oversold=30, rsi_overbought=70,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),
+    StrategyVariant(rsi_period=14, rsi_oversold=30, rsi_overbought=70,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),
+    # ── Relaxed RSI + wider BB — more signals, wider entry window ─────────────
+    StrategyVariant(rsi_period=21, rsi_oversold=35, rsi_overbought=65,
+                    bb_period=25, bb_std=2.5, volume_period=25, sma_period=0),
+    StrategyVariant(rsi_period=21, rsi_oversold=35, rsi_overbought=65,
+                    bb_period=25, bb_std=2.5, volume_period=25, sma_period=200),
+    # ── Relaxed RSI + tight BB — catches smaller deviations ───────────────────
+    StrategyVariant(rsi_period=21, rsi_oversold=35, rsi_overbought=65,
+                    bb_period=15, bb_std=1.5, volume_period=15, sma_period=0),
+    StrategyVariant(rsi_period=14, rsi_oversold=35, rsi_overbought=65,
+                    bb_period=15, bb_std=1.5, volume_period=15, sma_period=200),
+    # ── SMA(100) fast trend switch ────────────────────────────────────────────
+    StrategyVariant(rsi_period=21, rsi_oversold=35, rsi_overbought=65,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=100),
+    StrategyVariant(rsi_period=14, rsi_oversold=35, rsi_overbought=65,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=100),
+    # ── Very slow RSI + relaxed thresholds ────────────────────────────────────
+    StrategyVariant(rsi_period=28, rsi_oversold=35, rsi_overbought=65,
+                    bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
 ]
 
 
@@ -108,8 +146,16 @@ def generate_signals_with_params(
         last_close = float(close.iloc[i])
         prev_close = float(close.iloc[i - 1]) if i > 0 else last_close
 
+        # Use variant-specific RSI thresholds instead of the global defaults.
+        def _rsi_sig(v: float) -> Signal:
+            if v < variant.rsi_oversold:
+                return "bullish"
+            if v > variant.rsi_overbought:
+                return "bearish"
+            return "neutral"
+
         votes: list[Signal] = [
-            _rsi_signal(last_rsi),
+            _rsi_sig(last_rsi),
             _bb_signal(last_close, float(last_bb["upper"]), float(last_bb["lower"])),
             _volume_signal(last_z, last_close, prev_close),
         ]
