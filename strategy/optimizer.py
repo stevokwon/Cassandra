@@ -52,15 +52,23 @@ class StrategyVariant:
 
 # Catalogue of parameter combinations to test in the shadow pipeline.
 CANDIDATE_VARIANTS: list[StrategyVariant] = [
-    StrategyVariant(rsi_period=7,  bb_period=15, bb_std=1.5, volume_period=15, sma_period=200),
-    StrategyVariant(rsi_period=10, bb_period=20, bb_std=2.0, volume_period=15, sma_period=200),
-    StrategyVariant(rsi_period=14, bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),  # default
-    StrategyVariant(rsi_period=14, bb_period=15, bb_std=1.5, volume_period=20, sma_period=200),
+    # ── No trend filter (raw mean-reversion) ──────────────────────────────────
+    StrategyVariant(rsi_period=14, bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
+    StrategyVariant(rsi_period=21, bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
+    StrategyVariant(rsi_period=28, bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),
+    # ── SMA(200) trend gate — standard ────────────────────────────────────────
+    StrategyVariant(rsi_period=14, bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),
     StrategyVariant(rsi_period=21, bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),
+    StrategyVariant(rsi_period=28, bb_period=20, bb_std=2.0, volume_period=20, sma_period=200),
+    # ── SMA(100) trend gate — faster regime switch ────────────────────────────
+    StrategyVariant(rsi_period=14, bb_period=20, bb_std=2.0, volume_period=20, sma_period=100),
+    StrategyVariant(rsi_period=21, bb_period=20, bb_std=2.0, volume_period=20, sma_period=100),
+    # ── Wider Bollinger Bands (2.5σ) + slow indicators ────────────────────────
     StrategyVariant(rsi_period=21, bb_period=25, bb_std=2.5, volume_period=25, sma_period=200),
-    StrategyVariant(rsi_period=10, bb_period=25, bb_std=2.5, volume_period=20, sma_period=100),
-    StrategyVariant(rsi_period=14, bb_period=25, bb_std=2.0, volume_period=25, sma_period=100),
-    StrategyVariant(rsi_period=14, bb_period=20, bb_std=2.0, volume_period=20, sma_period=0),   # no trend filter
+    StrategyVariant(rsi_period=28, bb_period=25, bb_std=2.5, volume_period=25, sma_period=200),
+    # ── Tighter Bollinger Bands (1.5σ) + fast indicators ─────────────────────
+    StrategyVariant(rsi_period=14, bb_period=15, bb_std=1.5, volume_period=15, sma_period=200),
+    StrategyVariant(rsi_period=21, bb_period=15, bb_std=1.5, volume_period=15, sma_period=200),
 ]
 
 
