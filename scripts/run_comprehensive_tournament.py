@@ -42,7 +42,7 @@ DATASETS = [
     ("SOL/USDT", "4h"),
 ]
 
-MIN_TRADES = 3  # minimum trades per dataset for a result to count
+MIN_TRADES = 10  # Backtest Expert: min 30 ideal; 10 practical for 4h data
 
 
 def _fetch(symbol: str, timeframe: str, candles: int) -> tuple[pd.Series, pd.Series, str, str]:
@@ -106,16 +106,20 @@ def _write_log(
     dataset_meta: dict[str, tuple[str, str, int, str, str]],
     overall_ranking: list[dict[str, Any]],
     candles_per_dataset: int,
+    oos_results: dict[str, dict[str, Any]] | None = None,
+    split_pct: float = 0.70,
 ) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     winner = overall_ranking[0] if overall_ranking else None
 
+    split_label = f"{int(split_pct*100)}/{int((1-split_pct)*100)}"
     lines: list[str] = [
         f"\n---\n\n",
         f"## Comprehensive Tournament — {now}\n\n",
         f"**Variants tested:** {len(CANDIDATE_VARIANTS)}  "
         f"| **Datasets:** {len(DATASETS)}  "
-        f"| **Candles/dataset:** {candles_per_dataset:,}\n\n",
+        f"| **Candles/dataset:** {candles_per_dataset:,}  "
+        f"| **Walk-forward split:** {split_label} (IS/OOS)\n\n",
     ]
 
     # Per-dataset breakdown
@@ -142,17 +146,22 @@ def _write_log(
             lines.append(f"| {v.describe()} | {sh_str} | {ret_str} | {trades}{flag} |\n")
         lines.append("\n")
 
-    # Overall aggregate ranking
-    lines.append("### Overall Ranking (avg Sharpe across valid datasets)\n\n")
-    lines.append("| Rank | Variant | Avg Sharpe | Avg Return | Valid/Total | Total Trades |\n")
-    lines.append("|------|---------|------------|------------|-------------|-------------|\n")
+    # Overall aggregate ranking (in-sample)
+    lines.append("### In-Sample Ranking (avg Sharpe across valid datasets)\n\n")
+    lines.append("| Rank | Variant | IS Sharpe | OOS Sharpe | IS Return | Valid/Total | Trades |\n")
+    lines.append("|------|---------|-----------|------------|-----------|-------------|--------|\n")
     rank_labels = {1: "🥇 1", 2: "🥈 2", 3: "🥉 3"}
+    oos = oos_results or {}
     for i, entry in enumerate(overall_ranking):
         v = entry["variant"]
         rl = rank_labels.get(i + 1, str(i + 1))
+        oos_data = oos.get(v.describe(), {})
+        oos_sh = oos_data.get("avg_sharpe", math.nan)
+        oos_str = f"{oos_sh:+.3f}" if not math.isnan(oos_sh) else "—"
         lines.append(
             f"| {rl} | {v.describe()} "
             f"| {entry['avg_sharpe']:+.3f} "
+            f"| {oos_str} "
             f"| {entry['avg_return']:+.2%} "
             f"| {entry['datasets_valid']}/{entry['datasets_total']} "
             f"| {entry['trades_total']} |\n"
@@ -161,13 +170,23 @@ def _write_log(
     # Winner block
     if winner:
         v = winner["variant"]
+        oos_data = (oos_results or {}).get(v.describe(), {})
+        oos_sh = oos_data.get("avg_sharpe", math.nan)
+        oos_ret = oos_data.get("avg_return", math.nan)
+        oos_valid = oos_data.get("valid_datasets", 0)
+        oos_note = (
+            f"{oos_sh:+.3f} (avg, {oos_valid} datasets)"
+            if not math.isnan(oos_sh) else "insufficient data"
+        )
         lines += [
             "\n### 🏆 Winner of the Day\n\n",
             f"**{v.describe()}**\n\n",
             f"| Metric | Value |\n",
             f"|--------|-------|\n",
-            f"| Avg Sharpe (across datasets) | {winner['avg_sharpe']:+.3f} |\n",
-            f"| Avg Return | {winner['avg_return']:+.2%} |\n",
+            f"| IS Avg Sharpe | {winner['avg_sharpe']:+.3f} |\n",
+            f"| OOS Avg Sharpe | {oos_note} |\n",
+            f"| IS Avg Return | {winner['avg_return']:+.2%} |\n",
+            f"| OOS Avg Return | {'n/a' if math.isnan(oos_ret) else f'{oos_ret:+.2%}'} |\n",
             f"| Valid datasets | {winner['datasets_valid']}/{winner['datasets_total']} |\n",
             f"| Total trades | {winner['trades_total']} |\n",
             f"\n**Params to apply when satisfied:**\n\n",
@@ -194,6 +213,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Comprehensive strategy tournament")
     parser.add_argument("--candles", type=int, default=5_000,
                         help="Candles per dataset (default 5000 for speed)")
+    parser.add_argument("--insample-pct", type=float, default=0.70,
+                        help="Fraction of data used for in-sample search (default 0.70)")
     args = parser.parse_args()
 
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -204,66 +225,103 @@ def main() -> None:
           f"Candles/dataset: {args.candles:,}")
     print("═" * 60)
 
-    # 1. Fetch all datasets up front
-    print("\n[1/3] Fetching datasets...")
-    datasets: dict[str, tuple[pd.Series, pd.Series]] = {}
+    split_pct = args.insample_pct
+    split_label = f"{int(split_pct*100)}/{int((1-split_pct)*100)}"
+
+    # 1. Fetch all datasets up front, split into in-sample / out-of-sample
+    print(f"\n[1/4] Fetching datasets (walk-forward split {split_label})...")
+    datasets_is: dict[str, tuple[pd.Series, pd.Series]] = {}   # in-sample
+    datasets_oos: dict[str, tuple[pd.Series, pd.Series]] = {}  # out-of-sample
     dataset_meta: dict[str, tuple[str, str, int, str, str]] = {}
     for symbol, tf in DATASETS:
         key = f"{symbol} {tf}"
         print(f"  {key}...", end=" ", flush=True)
         close, volume, date_from, date_to = _fetch(symbol, tf, args.candles)
-        datasets[key] = (close, volume)
+        split_idx = int(len(close) * split_pct)
+        datasets_is[key] = (close.iloc[:split_idx], volume.iloc[:split_idx])
+        datasets_oos[key] = (close.iloc[split_idx:], volume.iloc[split_idx:])
         dataset_meta[key] = (symbol, tf, len(close), date_from, date_to)
-        print(f"{len(close):,} candles  ({date_from} → {date_to})")
+        print(f"{len(close):,} candles  ({date_from} → {date_to})  "
+              f"IS={split_idx}  OOS={len(close)-split_idx}")
 
-    # 2. Run all variants on all datasets
-    print(f"\n[2/3] Running {len(CANDIDATE_VARIANTS)} variants × {len(DATASETS)} datasets "
-          f"= {len(CANDIDATE_VARIANTS) * len(DATASETS)} backtests...\n")
-
-    results_by_dataset: dict[str, list[dict[str, Any]]] = {k: [] for k in datasets}
+    # 2. In-sample: run all variants to find the best
+    print(f"\n[2/4] In-sample search ({int(split_pct*100)}% of data)...\n")
+    results_by_dataset_is: dict[str, list[dict[str, Any]]] = {k: [] for k in datasets_is}
 
     for i, variant in enumerate(CANDIDATE_VARIANTS, 1):
         row_sharpes = []
-        for ds_key, (close, volume) in datasets.items():
+        for ds_key, (close, volume) in datasets_is.items():
             result = backtest_variant(variant, close, volume)
-            results_by_dataset[ds_key].append(result)
+            results_by_dataset_is[ds_key].append(result)
             sh = result.get("sharpe_ratio", math.nan)
             trades = result.get("total_trades", 0)
             tag = f"{sh:+.3f}" if (not math.isnan(sh) and trades >= MIN_TRADES) else "  n/a"
             row_sharpes.append(f"{tag:>7}")
 
-        datasets_str = "  ".join(
-            f"{sym[0]}/{tf}" for sym, tf in [(s.split("/")[0], t) for s, t in DATASETS]
-        )
         sharpes_str = "  ".join(row_sharpes)
         print(f"  [{i:2d}/{len(CANDIDATE_VARIANTS)}] {variant.describe()}")
-        print(f"         [{datasets_str}]")
-        print(f"         [{sharpes_str}]")
+        print(f"         IS: [{sharpes_str}]")
 
-    # 3. Score and rank
-    print("\n[3/3] Scoring...")
-    overall_ranking = _score(results_by_dataset)
+    # 3. Score in-sample ranking, then validate winner out-of-sample
+    print(f"\n[3/4] Ranking in-sample results...")
+    overall_ranking = _score(results_by_dataset_is)
+
+    # Out-of-sample validation of top-3 winners
+    oos_results: dict[str, dict[str, Any]] = {}  # variant_key → avg OOS stats
+    if overall_ranking:
+        print(f"\n[4/4] Out-of-sample validation (top 3 variants on {int((1-split_pct)*100)}% holdout)...\n")
+        for entry in overall_ranking[:3]:
+            variant = entry["variant"]
+            vkey = variant.describe()
+            oos_sharpes, oos_returns, oos_trades = [], [], []
+            for ds_key, (close, volume) in datasets_oos.items():
+                r = backtest_variant(variant, close, volume)
+                sh = r.get("sharpe_ratio", math.nan)
+                trades = r.get("total_trades", 0)
+                if not math.isnan(sh) and trades >= max(MIN_TRADES // 3, 1):
+                    oos_sharpes.append(sh)
+                    oos_returns.append(r.get("total_return", 0.0))
+                    oos_trades.append(trades)
+                    tag = f"{sh:+.3f}"
+                else:
+                    tag = "  n/a"
+                print(f"  OOS [{ds_key:16s}] {tag}  {vkey[:60]}")
+            oos_results[vkey] = {
+                "avg_sharpe": sum(oos_sharpes) / len(oos_sharpes) if oos_sharpes else math.nan,
+                "avg_return": sum(oos_returns) / len(oos_returns) if oos_returns else math.nan,
+                "valid_datasets": len(oos_sharpes),
+            }
+            print()
 
     print("\n" + "─" * 60)
-    print("  OVERALL RANKING (avg Sharpe across valid datasets)\n")
+    print("  IN-SAMPLE RANKING (avg Sharpe)\n")
     for i, entry in enumerate(overall_ranking[:5], 1):
         v = entry["variant"]
+        vkey = v.describe()
+        oos = oos_results.get(vkey, {})
+        oos_sh = oos.get("avg_sharpe", math.nan)
+        oos_str = f"OOS={oos_sh:+.3f}" if not math.isnan(oos_sh) else "OOS=n/a"
         print(
             f"  {i}. {v.describe()}\n"
-            f"     Avg Sharpe={entry['avg_sharpe']:+.3f}  "
-            f"Avg Return={entry['avg_return']:+.2%}  "
-            f"Valid={entry['datasets_valid']}/{entry['datasets_total']} datasets  "
+            f"     IS Sharpe={entry['avg_sharpe']:+.3f}  {oos_str}  "
+            f"Return={entry['avg_return']:+.2%}  "
+            f"Valid={entry['datasets_valid']}/{entry['datasets_total']}  "
             f"Trades={entry['trades_total']}"
         )
 
     if overall_ranking:
         w = overall_ranking[0]
         v = w["variant"]
+        vkey = v.describe()
+        oos = oos_results.get(vkey, {})
+        oos_sh = oos.get("avg_sharpe", math.nan)
         print(f"\n  🏆 Winner of the Day: {v.describe()}")
-        print(f"     Avg Sharpe={w['avg_sharpe']:+.3f}  "
-              f"Avg Return={w['avg_return']:+.2%}")
+        print(f"     IS Sharpe={w['avg_sharpe']:+.3f}  "
+              f"OOS Sharpe={'n/a' if math.isnan(oos_sh) else f'{oos_sh:+.3f}'}  "
+              f"Return={w['avg_return']:+.2%}")
 
-    _write_log(results_by_dataset, dataset_meta, overall_ranking, args.candles)
+    _write_log(results_by_dataset_is, dataset_meta, overall_ranking, args.candles,
+               oos_results=oos_results, split_pct=split_pct)
     print(f"\n  Full report logged → agents/memory/PENDING_UPGRADES.md")
     print("─" * 60)
 

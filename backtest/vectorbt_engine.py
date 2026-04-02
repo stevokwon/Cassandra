@@ -6,6 +6,21 @@ import pandas as pd
 import vectorbt as vbt
 
 
+def _infer_freq(close: pd.Series) -> str:
+    """Detect candle interval from the DatetimeIndex so VectorBT annualises
+    the Sharpe ratio correctly regardless of which timeframe is being tested."""
+    if len(close) < 2:
+        return "1h"
+    hours = (close.index[1] - close.index[0]).total_seconds() / 3600
+    if hours == 1:
+        return "1h"
+    if hours == 4:
+        return "4h"
+    if hours == 24:
+        return "1d"
+    return f"{int(hours)}h"
+
+
 def load_ohlcv_from_df(df: pd.DataFrame) -> pd.Series:
     """Convert a ccxt-format OHLCV DataFrame into a DatetimeIndex close price Series.
 
@@ -60,7 +75,7 @@ def run_buy_and_hold(
         exits=exits,
         init_cash=initial_cash,
         fees=fees,
-        freq="1h",
+        freq=_infer_freq(close),
     )
 
     raw_stats = portfolio.stats()
@@ -112,7 +127,7 @@ def run_strategy_backtest(
         exits=exits,
         init_cash=initial_cash,
         fees=fees,
-        freq="1h",
+        freq=_infer_freq(close),
     )
 
     raw_stats = portfolio.stats()

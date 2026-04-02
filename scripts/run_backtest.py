@@ -34,8 +34,8 @@ from execution.ccxt_client import fetch_ohlcv_bulk
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run Cassandra Phase 5 backtest")
     parser.add_argument("--symbol",    default="BTC/USDT", help="Trading pair")
-    parser.add_argument("--timeframe", default="1h",       help="Candle timeframe")
-    parser.add_argument("--limit",     default=500, type=int, help="Number of candles")
+    parser.add_argument("--timeframe", default="4h",       help="Candle timeframe")
+    parser.add_argument("--limit",     default=2000, type=int, help="Number of candles")
     parser.add_argument("--capital",   default=1000.0, type=float, help="Starting USDT")
     args = parser.parse_args()
 

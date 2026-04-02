@@ -18,13 +18,13 @@ _BACKTEST_LOG = Path(__file__).parent.parent / "agents" / "memory" / "backtest_l
 _PENDING_UPGRADES = Path(__file__).parent.parent / "agents" / "memory" / "PENDING_UPGRADES.md"
 
 SYMBOL = "BTC/USDT"
-TIMEFRAME = "1h"
-CANDLES = 500
+TIMEFRAME = "4h"
+CANDLES = 500  # 500 × 4h ≈ 83 days — covers SMA(200) warmup with room
 
 
 @st.cache_data(ttl=60)
 def load_ohlcv() -> tuple[pd.Series, pd.Series]:
-    """Fetch 500 BTC/USDT 1h candles from the Binance public API.
+    """Fetch 500 BTC/USDT 4h candles from the Binance public API.
 
     Cached for 60 seconds. No API key required.
 

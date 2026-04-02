@@ -92,6 +92,64 @@ def compute_volume_zscore(volume: pd.Series, period: int = 20) -> pd.Series:
     return z.rename("volume_zscore")
 
 
+# ── ATR Approximation (close-only, for position sizing) ──────────────────────
+
+def compute_atr(close: pd.Series, period: int = 14) -> pd.Series:
+    """Approximate Average True Range from close prices only.
+
+    Uses the rolling mean of absolute candle-to-candle price changes as a
+    proxy for ATR. Used by the Position Sizer to scale positions inversely
+    to current volatility.
+
+    Args:
+        close: Time-ordered close price Series with a DatetimeIndex.
+        period: Lookback window. Default 14.
+
+    Returns:
+        pd.Series of approximate ATR values (same units as price).
+        First (period-1) values are NaN.
+    """
+    return close.diff().abs().rolling(window=period).mean().rename("atr")
+
+
+# ── Market Regime Classifier (Exposure Coach / Macro Regime Detector) ────────
+
+def classify_market_regime(close: pd.Series) -> str:
+    """Classify the macro market regime using a dual SMA filter.
+
+    Bull  = price > SMA(50) AND SMA(50) > SMA(200)  — confirmed uptrend
+    Bear  = price < SMA(50) AND SMA(50) < SMA(200)  — confirmed downtrend
+    Sideways = everything else (mixed / insufficient data)
+
+    Used by the consensus engine to scale position size:
+      bull → full Kelly, sideways → half Kelly, bear → no new longs.
+
+    Args:
+        close: Time-ordered close price Series (min ~200 candles for full signal).
+
+    Returns:
+        'bull', 'bear', or 'sideways'.
+    """
+    sma50 = close.rolling(50).mean()
+    sma200 = close.rolling(200).mean()
+
+    sma50_valid = sma50.dropna()
+    sma200_valid = sma200.dropna()
+
+    if sma50_valid.empty or sma200_valid.empty:
+        return "sideways"
+
+    last_close = float(close.iloc[-1])
+    last_sma50 = float(sma50_valid.iloc[-1])
+    last_sma200 = float(sma200_valid.iloc[-1])
+
+    if last_close > last_sma50 and last_sma50 > last_sma200:
+        return "bull"
+    if last_close < last_sma50 and last_sma50 < last_sma200:
+        return "bear"
+    return "sideways"
+
+
 # ── Simple Moving Average (Trend Filter) ─────────────────────────────────────
 
 def compute_sma(close: pd.Series, period: int = 200) -> pd.Series:
