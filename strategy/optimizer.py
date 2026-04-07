@@ -4,6 +4,7 @@ Tests alternative RSI / Bollinger Band / Volume Z-Score configurations
 against historical OHLCV data and returns backtest stats for each.
 All I/O is pure — no file writes here; orchestrator.py handles persistence.
 """
+import math
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -116,15 +117,27 @@ def generate_signals_with_params(
     variant: StrategyVariant,
     warmup: int | None = None,
 ) -> pd.Series:
-    """Generate rolling signals using a custom StrategyVariant configuration."""
+    """Generate rolling signals using a custom StrategyVariant configuration.
+
+    Applies the same dual-SMA regime gate as the live consensus engine so that
+    backtest results reflect real system behaviour:
+      - Bull regime  (price > SMA50 > SMA200): longs allowed, exits allowed
+      - Bear regime  (price < SMA50 < SMA200): long entries suppressed → neutral
+      - Sideways: both directions allowed
+    """
+    _REGIME_WARMUP = 200  # SMA200 requires this minimum before regime is valid
     effective_warmup = max(
         warmup if warmup is not None else variant.bb_period,
         variant.sma_period if variant.sma_period > 0 else 0,
+        _REGIME_WARMUP,
     )
     rsi = compute_rsi(close, period=variant.rsi_period)
     bb = compute_bollinger_bands(close, period=variant.bb_period, std_dev=variant.bb_std)
     z = compute_volume_zscore(volume, period=variant.volume_period)
     sma = compute_sma(close, variant.sma_period) if variant.sma_period > 0 else None
+    # Precompute dual-SMA arrays for regime gate (indexed access is O(1) per candle)
+    sma50 = compute_sma(close, 50)
+    sma200 = compute_sma(close, 200)
 
     signals: list[Signal] = []
     for i in range(len(close)):
@@ -167,7 +180,7 @@ def generate_signals_with_params(
         else:
             signal = "neutral"
 
-        # SMA trend gate: suppress signals that go against the macro trend.
+        # Gate 1 — single-SMA variant trend filter (per variant.sma_period)
         if sma is not None and signal != "neutral":
             sma_slice = sma.iloc[: i + 1].dropna()
             if not sma_slice.empty:
@@ -176,6 +189,16 @@ def generate_signals_with_params(
                     signal = "neutral"
                 elif signal == "bearish" and last_close > last_sma:
                     signal = "neutral"
+
+        # Gate 2 — dual-SMA regime gate (mirrors live consensus engine)
+        # Suppresses long entries in confirmed bear regime (price < SMA50 < SMA200).
+        # Exits (bearish signals) are never suppressed — always let positions close.
+        if signal == "bullish":
+            s50 = sma50.iloc[i]
+            s200 = sma200.iloc[i]
+            if not (math.isnan(float(s50)) or math.isnan(float(s200))):
+                if last_close < float(s50) and float(s50) < float(s200):
+                    signal = "neutral"  # bear regime — suppress long entry
 
         signals.append(signal)
 
