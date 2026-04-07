@@ -171,10 +171,14 @@ def compute_sma(close: pd.Series, period: int = 200) -> pd.Series:
 # ── Signal Aggregation ────────────────────────────────────────────────────────
 
 def _rsi_signal(rsi_value: float) -> Signal:
-    """Map a single RSI value to a Signal literal."""
-    if rsi_value < 30.0:
+    """Map a single RSI value to a Signal literal.
+
+    Thresholds relaxed to 35/65 (from 30/70) so the regime filter has
+    enough signal flow to work with — confirmed by tournament 2026-04-07.
+    """
+    if rsi_value < 35.0:
         return "bullish"
-    if rsi_value > 70.0:
+    if rsi_value > 65.0:
         return "bearish"
     return "neutral"
 
