@@ -257,17 +257,19 @@ def generate_signal(
     elif bearish_count >= 2:
         signal = "bearish"
 
-    # SMA trend gate: only trade in the direction of the macro trend.
-    # Suppresses bullish signals below SMA (downtrend) and bearish signals
-    # above SMA (uptrend) to avoid catching falling knives or shorting rallies.
-    if sma_period > 0 and signal != "neutral":
-        sma = compute_sma(close, sma_period)
-        sma_clean = sma.dropna()
-        if not sma_clean.empty:
-            last_sma = float(sma_clean.iloc[-1])
-            if signal == "bullish" and last_close < last_sma:
-                return "neutral"
-            if signal == "bearish" and last_close > last_sma:
+    # Regime gate: suppress long entries only in confirmed bear regime
+    # (price < SMA50 < SMA200).  Bearish signals are never suppressed so
+    # open positions can always be exited.  Mirrors generate_signals_with_params
+    # in optimizer.py and Gate 3 in consensus.py.
+    if sma_period > 0 and signal == "bullish":
+        sma50 = close.rolling(50).mean()
+        sma200 = close.rolling(sma_period).mean()
+        s50 = sma50.dropna()
+        s200 = sma200.dropna()
+        if not s50.empty and not s200.empty:
+            last_s50 = float(s50.iloc[-1])
+            last_s200 = float(s200.iloc[-1])
+            if last_close < last_s50 and last_s50 < last_s200:
                 return "neutral"
 
     return signal
