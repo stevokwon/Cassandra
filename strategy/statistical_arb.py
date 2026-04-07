@@ -45,15 +45,15 @@ def compute_rsi(close: pd.Series, period: int = 21) -> pd.Series:
 
 def compute_bollinger_bands(
     close: pd.Series,
-    period: int = 20,
-    std_dev: float = 2.0,
+    period: int = 25,
+    std_dev: float = 2.5,
 ) -> pd.DataFrame:
     """Compute Bollinger Bands (upper, middle, lower) for a close price Series.
 
     Args:
         close: Time-ordered close price Series with a DatetimeIndex.
         period: Rolling window for the moving average and standard deviation.
-        std_dev: Number of standard deviations for the band width. Default 2.0.
+        std_dev: Number of standard deviations for the band width. Default 2.5.
 
     Returns:
         DataFrame with columns ['upper', 'middle', 'lower'].
@@ -68,7 +68,7 @@ def compute_bollinger_bands(
 
 # ── Volume Z-Score ────────────────────────────────────────────────────────────
 
-def compute_volume_zscore(volume: pd.Series, period: int = 20) -> pd.Series:
+def compute_volume_zscore(volume: pd.Series, period: int = 25) -> pd.Series:
     """Compute the rolling Z-score of trading volume.
 
     A Z-score > 2.0 indicates a statistically significant volume spike
@@ -76,7 +76,7 @@ def compute_volume_zscore(volume: pd.Series, period: int = 20) -> pd.Series:
 
     Args:
         volume: Time-ordered volume Series with a DatetimeIndex.
-        period: Rolling window for mean and standard deviation. Default 20.
+        period: Rolling window for mean and standard deviation. Default 25.
 
     Returns:
         pd.Series of Z-scores. First (period - 1) values are NaN.
@@ -205,15 +205,15 @@ def _volume_signal(z_value: float, close_now: float, close_prev: float) -> Signa
 def generate_signal(
     close: pd.Series,
     volume: pd.Series,
-    sma_period: int = 200,
+    sma_period: int = 0,
 ) -> Signal:
     """Generate a consensus Signal from the last available candle.
 
-    Applies majority vote across RSI, Bollinger Bands, and Volume Z-Score,
-    then gates the result through an SMA trend filter: bullish signals are
-    only emitted when price is above the SMA (uptrend) and bearish signals
-    only when price is below it (downtrend). This prevents mean-reversion
-    entries against the macro trend.
+    Applies majority vote across RSI, Bollinger Bands, and Volume Z-Score.
+    The optional SMA regime gate (sma_period > 0) suppresses bullish entries
+    in confirmed bear regime (price < SMA50 < SMA_period); bearish signals are
+    never suppressed.  In production the regime gate is applied at a higher
+    level by evaluate_consensus(), so sma_period defaults to 0 here.
 
     Args:
         close: Time-ordered close price Series (DatetimeIndex).
@@ -279,7 +279,7 @@ def rolling_signals(
     close: pd.Series,
     volume: pd.Series,
     warmup: int = 20,
-    sma_period: int = 200,
+    sma_period: int = 0,
 ) -> pd.Series:
     """Apply generate_signal() across a rolling window of the full Series.
 
