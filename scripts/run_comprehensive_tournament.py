@@ -42,7 +42,7 @@ DATASETS = [
     ("SOL/USDT", "4h"),
 ]
 
-MIN_TRADES = 10  # Backtest Expert: min 30 ideal; 10 practical for 4h data
+MIN_TRADES = 5  # Lowered to enable cross-symbol scoring (ETH/SOL 4h generate fewer signals)
 
 
 def _fetch(symbol: str, timeframe: str, candles: int) -> tuple[pd.Series, pd.Series, str, str]:

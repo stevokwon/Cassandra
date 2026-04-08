@@ -12,7 +12,7 @@ Signal = Literal["bullish", "bearish", "neutral"]
 
 # ── RSI ───────────────────────────────────────────────────────────────────────
 
-def compute_rsi(close: pd.Series, period: int = 21) -> pd.Series:
+def compute_rsi(close: pd.Series, period: int = 28) -> pd.Series:
     """Compute the Relative Strength Index (RSI) for a close price Series.
 
     Uses Wilder's smoothed moving average (EMA with alpha=1/period).
@@ -45,15 +45,15 @@ def compute_rsi(close: pd.Series, period: int = 21) -> pd.Series:
 
 def compute_bollinger_bands(
     close: pd.Series,
-    period: int = 25,
-    std_dev: float = 2.5,
+    period: int = 20,
+    std_dev: float = 2.0,
 ) -> pd.DataFrame:
     """Compute Bollinger Bands (upper, middle, lower) for a close price Series.
 
     Args:
         close: Time-ordered close price Series with a DatetimeIndex.
         period: Rolling window for the moving average and standard deviation.
-        std_dev: Number of standard deviations for the band width. Default 2.5.
+        std_dev: Number of standard deviations for the band width. Default 2.0.
 
     Returns:
         DataFrame with columns ['upper', 'middle', 'lower'].
@@ -68,7 +68,7 @@ def compute_bollinger_bands(
 
 # ── Volume Z-Score ────────────────────────────────────────────────────────────
 
-def compute_volume_zscore(volume: pd.Series, period: int = 25) -> pd.Series:
+def compute_volume_zscore(volume: pd.Series, period: int = 20) -> pd.Series:
     """Compute the rolling Z-score of trading volume.
 
     A Z-score > 2.0 indicates a statistically significant volume spike
@@ -76,7 +76,7 @@ def compute_volume_zscore(volume: pd.Series, period: int = 25) -> pd.Series:
 
     Args:
         volume: Time-ordered volume Series with a DatetimeIndex.
-        period: Rolling window for mean and standard deviation. Default 25.
+        period: Rolling window for mean and standard deviation. Default 20.
 
     Returns:
         pd.Series of Z-scores. First (period - 1) values are NaN.
@@ -257,13 +257,13 @@ def generate_signal(
     elif bearish_count >= 2:
         signal = "bearish"
 
-    # Regime gate: suppress long entries only in confirmed bear regime
+    # Regime gate (always-on): suppress long entries in confirmed bear regime
     # (price < SMA50 < SMA200).  Bearish signals are never suppressed so
-    # open positions can always be exited.  Mirrors generate_signals_with_params
-    # in optimizer.py and Gate 3 in consensus.py.
-    if sma_period > 0 and signal == "bullish":
+    # open positions can always be exited.  Mirrors Gate 2 in optimizer.py
+    # and Gate 3 in consensus.py.
+    if signal == "bullish":
         sma50 = close.rolling(50).mean()
-        sma200 = close.rolling(sma_period).mean()
+        sma200 = close.rolling(200).mean()
         s50 = sma50.dropna()
         s200 = sma200.dropna()
         if not s50.empty and not s200.empty:
@@ -271,6 +271,12 @@ def generate_signal(
             last_s200 = float(s200.iloc[-1])
             if last_close < last_s50 and last_s50 < last_s200:
                 return "neutral"
+
+    # Optional single-SMA additional filter (disabled by default, sma_period=0).
+    if sma_period > 0 and signal == "bullish":
+        sma = close.rolling(sma_period).mean().dropna()
+        if not sma.empty and last_close < float(sma.iloc[-1]):
+            return "neutral"
 
     return signal
 
@@ -296,7 +302,8 @@ def rolling_signals(
         pd.Series of Signal literals ('bullish'/'bearish'/'neutral'),
         same length and index as close.
     """
-    effective_warmup = max(warmup, sma_period) if sma_period > 0 else warmup
+    # Always wait for SMA200 (regime gate) to be valid before firing signals.
+    effective_warmup = max(warmup, 200, sma_period if sma_period > 0 else 0)
     signals: list[Signal] = []
     for i in range(len(close)):
         if i < effective_warmup - 1:

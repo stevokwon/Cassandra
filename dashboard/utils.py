@@ -18,8 +18,8 @@ _BACKTEST_LOG = Path(__file__).parent.parent / "agents" / "memory" / "backtest_l
 _PENDING_UPGRADES = Path(__file__).parent.parent / "agents" / "memory" / "PENDING_UPGRADES.md"
 
 SYMBOL = "BTC/USDT"
-TIMEFRAME = "4h"
-CANDLES = 500  # 500 × 4h ≈ 83 days — covers SMA(200) warmup with room
+TIMEFRAME = "1h"
+CANDLES = 800  # 800 × 1h ≈ 33 days — covers indicator warmup with room
 
 
 @st.cache_data(ttl=60)

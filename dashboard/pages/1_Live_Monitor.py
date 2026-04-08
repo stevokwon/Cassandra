@@ -67,7 +67,7 @@ with tab_chart:
             shared_xaxes=True,
             row_heights=[0.7, 0.3],
             vertical_spacing=0.04,
-            subplot_titles=("BTC/USDT 4h", "RSI (21)"),
+            subplot_titles=("BTC/USDT 1h", "RSI (28)"),
         )
 
         # Price + Bollinger Bands
