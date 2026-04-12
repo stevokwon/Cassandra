@@ -216,6 +216,7 @@ package-lock.json
 # Agent memory & runtime logs (contain live trading data, not for public repos)
 agents/memory/*
 agents/__pycache__/*
+graphify-out
 
 # Implementation plans (internal tooling, not needed by contributors)
 docs/superpowers/plans/*
