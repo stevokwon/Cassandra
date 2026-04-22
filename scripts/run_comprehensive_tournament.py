@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 from datetime import datetime, timezone
@@ -30,6 +31,7 @@ from execution.ccxt_client import fetch_ohlcv_bulk
 from strategy.optimizer import CANDIDATE_VARIANTS, StrategyVariant, backtest_variant
 
 _LOG_PATH = Path(__file__).parent.parent / "agents" / "memory" / "PENDING_UPGRADES.md"
+_WINS_PATH = Path(__file__).parent.parent / "agents" / "memory" / "tournament_wins.json"
 
 # Datasets to test every variant on.  Each entry is (symbol, timeframe).
 # 1h: fine-grained noise test.  4h: smoother, trend-following friendly.
@@ -199,8 +201,8 @@ def _write_log(
             f"volume_period  = {v.volume_period}\n",
             f"sma_period     = {v.sma_period}\n",
             f"```\n\n",
-            f"> After ~10 consistent wins, update defaults in "
-            f"`strategy/statistical_arb.py` to go live.\n",
+            f"> Go-live rule: 7 wins out of the last 10 runs. "
+            f"Current rolling count logged to agents/memory/tournament_wins.json.\n",
         ]
     else:
         lines.append("\n> No valid winner — all variants failed on all datasets.\n")
@@ -323,6 +325,35 @@ def main() -> None:
     _write_log(results_by_dataset_is, dataset_meta, overall_ranking, args.candles,
                oos_results=oos_results, split_pct=split_pct)
     print(f"\n  Full report logged → agents/memory/PENDING_UPGRADES.md")
+
+    # Rolling win tracker: 7 wins out of the last 10 runs to go live.
+    if overall_ranking:
+        winner_key = overall_ranking[0]["variant"].describe()
+        try:
+            wins_data = json.loads(_WINS_PATH.read_text())
+            if not isinstance(wins_data, dict) or "history" not in wins_data:
+                raise ValueError("Unexpected format")
+            history: list[str] = wins_data["history"]
+            if not isinstance(history, list):
+                raise ValueError("history must be a list")
+        except Exception:
+            history = []
+
+        history.append(winner_key)
+        history = history[-10:]  # keep only the last 10 entries
+
+        rolling_count = history.count(winner_key)
+        _WINS_PATH.write_text(json.dumps({"history": history}, indent=2) + "\n")
+
+        print(
+            f"\n  Rolling win tracker: {winner_key} — "
+            f"{rolling_count}/10 (need 7 to go live)"
+        )
+        if rolling_count >= 7:
+            print(
+                "  GO-LIVE THRESHOLD REACHED — apply params to strategy/statistical_arb.py"
+            )
+
     print("─" * 60)
 
 
