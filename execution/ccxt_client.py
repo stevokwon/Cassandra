@@ -114,3 +114,72 @@ def fetch_balance(exchange: ccxt.Exchange) -> float:
     """
     balance_data: dict[str, Any] = exchange.fetch_balance()
     return float(balance_data.get("free", {}).get("USDT", 0.0))
+
+
+def place_order(
+    exchange: ccxt.Exchange,
+    symbol: str,
+    side: str,
+    amount_usdt: float,
+) -> dict[str, Any]:
+    """Place a market order on the exchange.
+
+    Converts the USDT amount to base asset quantity using the current last
+    price before submitting the order.
+
+    Args:
+        exchange: An initialised ccxt Exchange instance.
+        symbol: Market symbol, e.g. 'BTC/USDT'.
+        side: Order direction — must be 'buy' or 'sell'.
+        amount_usdt: USDT value to trade.
+
+    Returns:
+        The raw ccxt order dict returned by the exchange.
+
+    Raises:
+        ValueError: If ``side`` is not 'buy' or 'sell'.
+    """
+    if side not in ("buy", "sell"):
+        raise ValueError(f"Invalid side '{side}': must be 'buy' or 'sell'.")
+
+    last_price: float = float(exchange.fetch_ticker(symbol)["last"])
+    amount: float = amount_usdt / last_price
+    order: dict[str, Any] = exchange.create_order(symbol, "market", side, amount)
+    return order
+
+
+def close_position(
+    exchange: ccxt.Exchange,
+    symbol: str,
+) -> dict[str, Any] | None:
+    """Close an open position for the given symbol, if one exists.
+
+    Fetches the current position and, if the size is non-zero, submits a
+    market order in the opposite direction to close it.
+
+    Args:
+        exchange: An initialised ccxt Exchange instance.
+        symbol: Market symbol, e.g. 'BTC/USDT'.
+
+    Returns:
+        The raw ccxt order dict for the closing order, or ``None`` if no
+        position was open.
+    """
+    positions: list[dict[str, Any]] = exchange.fetch_positions([symbol])
+
+    open_position: dict[str, Any] | None = None
+    for pos in positions:
+        contracts = pos.get("contracts") or 0.0
+        if float(contracts) != 0.0:
+            open_position = pos
+            break
+
+    if open_position is None:
+        return None
+
+    size: float = float(open_position["contracts"])
+    close_side: str = "sell" if size > 0 else "buy"
+    close_order: dict[str, Any] = exchange.create_order(
+        symbol, "market", close_side, abs(size)
+    )
+    return close_order
