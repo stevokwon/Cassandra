@@ -55,6 +55,7 @@ def _load_position_state() -> dict[str, Any]:
             "entry_price": None,
             "size_usdt": None,
             "entry_time": None,
+            "peak_equity": None,
         }
         _save_position_state(default)
         return default
