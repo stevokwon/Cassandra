@@ -15,14 +15,8 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-
       - name: Install dependencies
-        run: pip install -r requirements.txt -q
+        run: python3 -m pip install -r requirements.txt -q
 
       - name: Write .env
         run: |
@@ -30,7 +24,7 @@ jobs:
           echo "BINANCE_TESTNET_SECRET=${{ secrets.BINANCE_TESTNET_SECRET }}" >> .env
 
       - name: Run live cycle
-        run: python scripts/run_live.py
+        run: python3 scripts/run_live.py
 
       - name: Commit trade log and position state
         run: |
