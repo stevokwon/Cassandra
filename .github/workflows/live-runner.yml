@@ -1,0 +1,41 @@
+name: Cassandra Live Runner
+
+on:
+  schedule:
+    - cron: "0 * * * *"   # every hour at :00 UTC
+  workflow_dispatch:        # allow manual trigger from GitHub UI
+
+jobs:
+  run-live:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # needed to commit trade log back to repo
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -q
+
+      - name: Write .env
+        run: |
+          echo "BINANCE_TESTNET_API_KEY=${{ secrets.BINANCE_TESTNET_API_KEY }}" >> .env
+          echo "BINANCE_TESTNET_SECRET=${{ secrets.BINANCE_TESTNET_SECRET }}" >> .env
+
+      - name: Run live cycle
+        run: python scripts/run_live.py
+
+      - name: Commit trade log and position state
+        run: |
+          git config user.name  "Cassandra Agent"
+          git config user.email "cassandra-agent@automated"
+          git add -f agents/memory/live_trade_log.md agents/memory/position_state.json
+          git diff --cached --quiet || git commit -m "chore(live): hourly run $(date -u +%Y-%m-%dT%H:%M)Z"
+          git push
