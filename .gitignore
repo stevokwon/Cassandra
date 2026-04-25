@@ -207,6 +207,9 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# GitHub Actions self-hosted runner
+actions-runner/
+
 # Cassandra — project-specific
 node_modules/
 package.json
