@@ -18,11 +18,6 @@ jobs:
       - name: Install dependencies
         run: python3 -m pip install -r requirements.txt -q
 
-      - name: Write .env
-        run: |
-          echo "BINANCE_TESTNET_API_KEY=${{ secrets.BINANCE_TESTNET_API_KEY }}" >> .env
-          echo "BINANCE_TESTNET_SECRET=${{ secrets.BINANCE_TESTNET_SECRET }}" >> .env
-
       - name: Run live cycle
         run: python3 scripts/run_live.py
 
