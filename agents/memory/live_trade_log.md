@@ -16,3 +16,4 @@
 | 2026-04-25 22:14 | BTC/USDT | 1h | HOLD | — | 77509.75 | Swarm disagreement: stat=neutral, macro=neutral |
 | 2026-04-25 23:16 | BTC/USDT | 1h | HOLD | — | 77567.17 | Swarm disagreement: stat=neutral, macro=neutral |
 | 2026-04-26 00:48 | BTC/USDT | 1h | HOLD | — | 77546.66 | Swarm disagreement: stat=neutral, macro=neutral |
+| 2026-04-26 02:13 | BTC/USDT | 1h | HOLD | — | 77557.97 | Swarm disagreement: stat=neutral, macro=neutral |
